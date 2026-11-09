@@ -208,3 +208,114 @@ jobs:
             echo "::error::Dépendances vulnérables (HIGH/CRITICAL) détectées - fusion bloquée."
             exit 1
           fi
+
+  # --------------------------------------------------------------------------
+  # Étape 3 - DAST : déploiement éphémère + scan OWASP ZAP
+  #   L'application est lancée dans un conteneur jetable sur le runner,
+  #   attaquée par ZAP (spider + scan actif), puis détruite.
+  #   Règle : échec si ZAP remonte une alerte de risque High (niveau max de ZAP).
+  # --------------------------------------------------------------------------
+  dast:
+    name: DAST (OWASP ZAP sur environnement éphémère)
+    needs: build-test
+    runs-on: ubuntu-latest
+    env:
+      TARGET: http://localhost:8000
+      ZAP_FAIL_RISK: "3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construction de l'image
+        run: docker build -t securenotes:dast .
+
+      - name: Déploiement de l'environnement éphémère
+        run: |
+          docker run -d --name securenotes-ephemeral -p 8000:8000 \
+            -e SECRET_KEY="$(openssl rand -hex 32)" securenotes:dast
+          for i in $(seq 1 30); do
+            if curl -fsS "$TARGET/health"; then echo; echo "Application prête"; exit 0; fi
+            sleep 2
+          done
+          docker logs securenotes-ephemeral
+          exit 1
+
+      - name: Scan OWASP ZAP (full scan - spider + attaque active)
+        run: |
+          mkdir -p zap && cp .zap/rules.tsv zap/ && chmod -R 777 zap
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py -t "$TARGET" -c rules.tsv -m 2 -T 15 -I \
+            -r zap-report.html -J zap-report.json -w zap-report.md || echo "ZAP code retour $?"
+          ls -la zap
+
+      - name: Journaux de l'application testée
+        if: always()
+        run: docker logs securenotes-ephemeral 2>&1 | tail -n 100
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-reports
+          path: zap/
+
+      - name: "Security gate DAST : alertes de risque High"
+        run: python3 scripts/zap_gate.py zap/zap-report.json
+
+      - name: Destruction de l'environnement éphémère
+        if: always()
+        run: docker rm -f securenotes-ephemeral || true
+
+  # --------------------------------------------------------------------------
+  # Garde-fou global : seul ce job est déclaré « required » dans la
+  # protection de la branche main. Il échoue si un contrôle a échoué.
+  # --------------------------------------------------------------------------
+  security-gate:
+    name: Security gate
+    needs: [build-test, sast, secrets, sca, dast]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Agrégation des résultats
+        run: |
+          {
+            echo "## Security gate"
+            echo "| Contrôle | Résultat |"
+            echo "|---|---|"
+            echo "| Build & tests | ${{ needs.build-test.result }} |"
+            echo "| SAST | ${{ needs.sast.result }} |"
+            echo "| Secrets | ${{ needs.secrets.result }} |"
+            echo "| SCA | ${{ needs.sca.result }} |"
+            echo "| DAST | ${{ needs.dast.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for r in "${{ needs.build-test.result }}" "${{ needs.sast.result }}" "${{ needs.secrets.result }}" \
+                   "${{ needs.sca.result }}" "${{ needs.dast.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "::error::Au moins un contrôle de sécurité a échoué - déploiement interdit."
+              exit 1
+            fi
+          done
+          echo "Tous les contrôles sont au vert : déploiement autorisé."
+
+  # --------------------------------------------------------------------------
+  # Déploiement : uniquement sur main et uniquement si la security gate passe
+  # --------------------------------------------------------------------------
+  deploy:
+    name: Déploiement (publication de l'image)
+    needs: security-gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Connexion à GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build & push de l'image validée
+        run: |
+          IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+          echo "Image déployée : $IMAGE:${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
