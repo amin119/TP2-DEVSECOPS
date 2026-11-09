@@ -45,3 +45,166 @@ jobs:
         with:
           name: coverage
           path: coverage.xml
+
+  # --------------------------------------------------------------------------
+  # Étape 2a - SAST : analyse statique du code source
+  #   Règle : échec si Semgrep remonte ERROR/HIGH/CRITICAL ou Bandit une sévérité HIGH
+  # --------------------------------------------------------------------------
+  sast:
+    name: SAST (Semgrep + Bandit)
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Installation de Semgrep et Bandit
+        run: pip install semgrep "bandit[sarif]"
+
+      - name: Semgrep - analyse (rapports JSON + SARIF)
+        run: |
+          mkdir -p reports
+          semgrep scan --metrics=off --config p/python --config p/flask --config p/owasp-top-ten \
+            --json --output reports/semgrep.json app wsgi.py
+          semgrep scan --metrics=off --config p/python --config p/flask --config p/owasp-top-ten \
+            --sarif --output reports/semgrep.sarif app wsgi.py
+
+      - name: Bandit - analyse (rapports SARIF + texte)
+        run: |
+          bandit -r app wsgi.py -f sarif -o reports/bandit.sarif --exit-zero
+          bandit -r app wsgi.py -f txt -o reports/bandit.txt --exit-zero
+          cat reports/bandit.txt
+
+      - name: Publication dans GitHub Code Scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/semgrep.sarif
+          category: semgrep
+
+      - name: Publication Bandit dans GitHub Code Scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/bandit.sarif
+          category: bandit
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-reports
+          path: reports/
+
+      - name: "Security gate SAST : Semgrep (ERROR/HIGH/CRITICAL)"
+        id: semgrep_gate
+        continue-on-error: true
+        run: python scripts/semgrep_gate.py reports/semgrep.json
+
+      - name: "Security gate SAST : Bandit (sévérité HIGH)"
+        id: bandit_gate
+        continue-on-error: true
+        run: bandit -r app wsgi.py --severity-level high --confidence-level medium
+
+      - name: Verdict SAST
+        run: |
+          echo "Semgrep : ${{ steps.semgrep_gate.outcome }} | Bandit : ${{ steps.bandit_gate.outcome }}"
+          if [ "${{ steps.semgrep_gate.outcome }}" != "success" ] || [ "${{ steps.bandit_gate.outcome }}" != "success" ]; then
+            echo "::error::Vulnérabilités SAST critiques/hautes détectées - fusion bloquée."
+            exit 1
+          fi
+
+  # --------------------------------------------------------------------------
+  # Étape 2b - Détection de secrets dans le code et l'historique Git
+  # --------------------------------------------------------------------------
+  secrets:
+    name: Secrets (Gitleaks)
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks - recherche de secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
+            detect --source /repo --no-git --redact --verbose \
+            --report-format json --report-path /repo/gitleaks.json
+
+  # --------------------------------------------------------------------------
+  # Étape 2c - SCA : vulnérabilités des dépendances et de l'image
+  #   Règle : échec si Trivy trouve une CVE HIGH ou CRITICAL
+  # --------------------------------------------------------------------------
+  sca:
+    name: SCA (Trivy + pip-audit)
+    needs: build-test
+    runs-on: ubuntu-latest
+    env:
+      TRIVY: docker run --rm -v ${{ github.workspace }}:/src -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache aquasec/trivy:0.58.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: pip-audit (informatif, base OSV/PyPI)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          mkdir -p reports
+          pip-audit -r requirements.txt --desc on -f markdown -o reports/pip-audit.md || true
+          cat reports/pip-audit.md
+          cat reports/pip-audit.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trivy - rapport complet des dépendances
+        run: |
+          mkdir -p reports
+          $TRIVY fs --scanners vuln --format table --output /src/reports/trivy-fs.txt /src
+          $TRIVY fs --scanners vuln --format sarif --output /src/reports/trivy-fs.sarif /src
+          cat reports/trivy-fs.txt
+
+      - name: Construction de l'image Docker
+        run: docker build -t securenotes:${{ github.sha }} .
+
+      - name: Trivy - rapport de l'image
+        run: |
+          $TRIVY image --scanners vuln --ignore-unfixed --format table \
+            --output /src/reports/trivy-image.txt securenotes:${{ github.sha }}
+          cat reports/trivy-image.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sca-reports
+          path: reports/
+
+      - name: "Security gate SCA : dépendances (HIGH, CRITICAL)"
+        id: fs_gate
+        continue-on-error: true
+        run: $TRIVY fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 /src
+
+      - name: "Security gate SCA : image (HIGH, CRITICAL corrigeables)"
+        id: image_gate
+        continue-on-error: true
+        run: |
+          $TRIVY image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 \
+            securenotes:${{ github.sha }}
+
+      - name: Verdict SCA
+        run: |
+          echo "## SCA - Trivy" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dépendances : ${{ steps.fs_gate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image Docker : ${{ steps.image_gate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.fs_gate.outcome }}" != "success" ] || [ "${{ steps.image_gate.outcome }}" != "success" ]; then
+            echo "::error::Dépendances vulnérables (HIGH/CRITICAL) détectées - fusion bloquée."
+            exit 1
+          fi
