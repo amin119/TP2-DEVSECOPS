@@ -13,6 +13,10 @@
       <a href="{{ url_for('main.health') }}">Santé</a>
       <a href="{{ url_for('main.api_list_notes') }}">API</a>
     </nav>
+    <form method="get" action="{{ url_for('main.search') }}">
+      <input name="q" maxlength="100" placeholder="Rechercher une note">
+      <button type="submit">Rechercher</button>
+    </form>
   </header>
   <main>{% block content %}{% endblock %}</main>
 </body>

@@ -60,3 +60,36 @@ def test_note_content_is_html_escaped(client):
     html = client.get(f"/notes/{note_id}").get_data(as_text=True)
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_search_finds_note(client):
+    resp = client.get("/search?q=Bienvenue")
+    assert resp.status_code == 200
+    assert "Bienvenue" in resp.get_data(as_text=True)
+
+
+def test_search_is_not_injectable(client):
+    html = client.get("/search?q=x' OR '1'='1' --").get_data(as_text=True)
+    assert "Aucune note trouvée" in html
+
+
+def test_search_escapes_query(client):
+    html = client.get("/search?q=<script>alert(1)</script>").get_data(as_text=True)
+    assert "<script>alert(1)</script>" not in html
+
+
+def test_admin_ping_route_removed(client):
+    assert client.get("/admin/ping?host=127.0.0.1").status_code == 404
+
+
+def test_import_yaml_notes(client):
+    body = "- title: Import\n  content: depuis YAML\n"
+    resp = client.post("/api/notes/import", data=body, content_type="application/x-yaml")
+    assert resp.status_code == 201
+    assert resp.get_json() == {"imported": 1}
+
+
+def test_import_rejects_python_objects(client):
+    body = "!!python/object/apply:os.system ['id']"
+    resp = client.post("/api/notes/import", data=body, content_type="application/x-yaml")
+    assert resp.status_code == 400

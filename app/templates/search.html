@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>Résultats pour « {{ query }} »</h2>
+  <ul>
+  {% for note in results %}
+    <li><a href="{{ url_for('main.show_note', note_id=note['id']) }}">{{ note['title'] }}</a></li>
+  {% else %}
+    <li>Aucune note trouvée.</li>
+  {% endfor %}
+  </ul>
+{% endblock %}
