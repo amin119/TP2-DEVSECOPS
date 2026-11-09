@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Recherche - SecureNotes{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Résultats pour « {{ query }} » <span class="badge">{{ results|length }}</span></h2>
+  <ul class="notes">
+  {% for note in results %}
+    <li><a href="{{ url_for('main.show_note', note_id=note['id']) }}">{{ note['title'] }}</a>
+      <span class="meta">{{ note['content'][:70] }}</span></li>
+  {% else %}
+    <li class="empty">Aucune note trouvée.</li>
+  {% endfor %}
+  </ul>
+</section>
+{% endblock %}

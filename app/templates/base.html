@@ -4,16 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SecureNotes{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <header>
-    <h1><a href="{{ url_for('main.index') }}">SecureNotes</a></h1>
-    <nav>
-      <a href="{{ url_for('main.index') }}">Accueil</a>
-      <a href="{{ url_for('main.health') }}">Santé</a>
-      <a href="{{ url_for('main.api_list_notes') }}">API</a>
-    </nav>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{{ url_for('main.index') }}"><span class="brand-logo">&#128274;</span>SecureNotes</a>
+      <nav class="nav">
+        <a href="{{ url_for('main.index') }}">Accueil</a>
+        <a href="{{ url_for('main.health') }}">Santé</a>
+        <a href="{{ url_for('main.api_list_notes') }}">API</a>
+      </nav>
+      <form class="search" method="get" action="{{ url_for('main.search') }}">
+        <input name="q" maxlength="100" placeholder="Rechercher une note">
+        <button type="submit">Rechercher</button>
+      </form>
+    </div>
   </header>
-  <main>{% block content %}{% endblock %}</main>
+  <main class="container">{% block content %}{% endblock %}</main>
+  <footer class="footer">SecureNotes · TP2 DevSecOps · pipeline SAST / SCA / DAST</footer>
 </body>
 </html>

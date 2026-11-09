@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} - SecureNotes{% endblock %}
+{% block content %}
+<section class="card error-page">
+  <p class="code">{{ code }}</p>
+  <h2>{{ message }}</h2>
+  <a class="back" href="{{ url_for('main.index') }}">&larr; Retour à l'accueil</a>
+</section>
+{% endblock %}

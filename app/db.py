@@ -63,3 +63,12 @@ def create_note(title, content):
     )
     conn.commit()
     return cur.lastrowid
+
+
+def search_notes(term):
+    # Requête paramétrée : la saisie n'est jamais interprétée comme du SQL
+    pattern = f"%{term}%"
+    return get_db().execute(
+        "SELECT id, title, content FROM notes WHERE title LIKE ? OR content LIKE ? ORDER BY id DESC",
+        (pattern, pattern),
+    ).fetchall()

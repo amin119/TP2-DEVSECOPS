@@ -67,3 +67,44 @@ def api_create_note():
         return jsonify(error=error), 400
     note_id = db.create_note(*data)
     return jsonify(dict(db.get_note(note_id))), 201
+
+
+# ---------------------------------------------------------------------------
+# Nouvelle fonctionnalité : recherche et import YAML (version corrigée)
+#  - SQL paramétré (CWE-89), échappement Jinja2 automatique (CWE-79)
+#  - route /admin/ping supprimée (CWE-306/CWE-78) : aucune exécution de commande
+#  - yaml.safe_load + validation du schéma (CWE-502)
+#  - gunicorn mis à jour (CVE-2024-1135, CVE-2024-6827)
+# ---------------------------------------------------------------------------
+import yaml  # noqa: E402
+
+MAX_QUERY = 100
+MAX_IMPORT = 50
+
+
+@bp.get("/search")
+def search():
+    q = request.args.get("q", "").strip()[:MAX_QUERY]
+    results = db.search_notes(q) if q else []
+    return render_template("search.html", query=q, results=results)
+
+
+@bp.post("/api/notes/import")
+def api_import_notes():
+    try:
+        data = yaml.safe_load(request.get_data(as_text=True))
+    except yaml.YAMLError:
+        return jsonify(error="YAML invalide"), 400
+    if not isinstance(data, list) or not 0 < len(data) <= MAX_IMPORT:
+        return jsonify(error=f"Une liste de 1 à {MAX_IMPORT} notes est attendue"), 400
+    validated = []
+    for item in data:
+        if not isinstance(item, dict):
+            return jsonify(error="Format de note invalide"), 400
+        note, error = _validate(item.get("title"), item.get("content"))
+        if error:
+            return jsonify(error=error), 400
+        validated.append(note)
+    for title, content in validated:
+        db.create_note(title, content)
+    return jsonify(imported=len(validated)), 201

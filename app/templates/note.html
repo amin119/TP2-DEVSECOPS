@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ note['title'] }} - SecureNotes{% endblock %}
 {% block content %}
-  <article>
-    <h2>{{ note['title'] }}</h2>
-    <p>{{ note['content'] }}</p>
-    <small>Créée le {{ note['created_at'] }}</small>
-  </article>
+<article class="card">
+  <h2>{{ note['title'] }}</h2>
+  <p class="subtitle">Créée le {{ note['created_at'] }}</p>
+  <p class="note-body">{{ note['content'] }}</p>
+  <a class="back" href="{{ url_for('main.index') }}">&larr; Retour aux notes</a>
+</article>
 {% endblock %}
