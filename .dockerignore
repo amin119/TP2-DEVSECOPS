@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+*.db
+tests
+rapport
+reports
+.zap
+scripts
+.pytest_cache
+.coverage

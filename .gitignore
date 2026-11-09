@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.db
+.pytest_cache/
+.coverage
+coverage.xml
+reports/
+rapport/*.aux
+rapport/*.log
+rapport/*.out
+rapport/*.toc
+rapport/*.lof
+rapport/*.lol
+rapport/*.fls
+rapport/*.fdb_latexmk
+rapport/*.synctex.gz

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SecureNotes{% endblock %}</title>
+</head>
+<body>
+  <header>
+    <h1><a href="{{ url_for('main.index') }}">SecureNotes</a></h1>
+    <nav>
+      <a href="{{ url_for('main.index') }}">Accueil</a>
+      <a href="{{ url_for('main.health') }}">Santé</a>
+      <a href="{{ url_for('main.api_list_notes') }}">API</a>
+    </nav>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>
