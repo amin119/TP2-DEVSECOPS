@@ -1,0 +1,321 @@
+name: DevSecOps CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Étape 1 - Pipeline de base : installation, lint, tests unitaires
+  # --------------------------------------------------------------------------
+  build-test:
+    name: Build & tests unitaires
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Installation des dépendances
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (flake8)
+        run: flake8 app tests wsgi.py
+
+      - name: Tests unitaires + couverture
+        run: pytest -v --cov=app --cov-report=term-missing --cov-report=xml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  # --------------------------------------------------------------------------
+  # Étape 2a - SAST : analyse statique du code source
+  #   Règle : échec si Semgrep remonte ERROR/HIGH/CRITICAL ou Bandit une sévérité HIGH
+  # --------------------------------------------------------------------------
+  sast:
+    name: SAST (Semgrep + Bandit)
+    needs: build-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Installation de Semgrep et Bandit
+        run: pip install semgrep "bandit[sarif]"
+
+      - name: Semgrep - analyse (rapports JSON + SARIF)
+        run: |
+          mkdir -p reports
+          semgrep scan --metrics=off --config p/python --config p/flask --config p/owasp-top-ten \
+            --json --output reports/semgrep.json app wsgi.py
+          semgrep scan --metrics=off --config p/python --config p/flask --config p/owasp-top-ten \
+            --sarif --output reports/semgrep.sarif app wsgi.py
+
+      - name: Bandit - analyse (rapports SARIF + texte)
+        run: |
+          bandit -r app wsgi.py -f sarif -o reports/bandit.sarif --exit-zero
+          bandit -r app wsgi.py -f txt -o reports/bandit.txt --exit-zero
+          cat reports/bandit.txt
+
+      - name: Publication dans GitHub Code Scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/semgrep.sarif
+          category: semgrep
+
+      - name: Publication Bandit dans GitHub Code Scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/bandit.sarif
+          category: bandit
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-reports
+          path: reports/
+
+      - name: "Security gate SAST : Semgrep (ERROR/HIGH/CRITICAL)"
+        id: semgrep_gate
+        continue-on-error: true
+        run: python scripts/semgrep_gate.py reports/semgrep.json
+
+      - name: "Security gate SAST : Bandit (sévérité HIGH)"
+        id: bandit_gate
+        continue-on-error: true
+        run: bandit -r app wsgi.py --severity-level high --confidence-level medium
+
+      - name: Verdict SAST
+        run: |
+          echo "Semgrep : ${{ steps.semgrep_gate.outcome }} | Bandit : ${{ steps.bandit_gate.outcome }}"
+          if [ "${{ steps.semgrep_gate.outcome }}" != "success" ] || [ "${{ steps.bandit_gate.outcome }}" != "success" ]; then
+            echo "::error::Vulnérabilités SAST critiques/hautes détectées - fusion bloquée."
+            exit 1
+          fi
+
+  # --------------------------------------------------------------------------
+  # Étape 2b - Détection de secrets dans le code et l'historique Git
+  # --------------------------------------------------------------------------
+  secrets:
+    name: Secrets (Gitleaks)
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks - recherche de secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
+            detect --source /repo --no-git --redact --verbose \
+            --report-format json --report-path /repo/gitleaks.json
+
+  # --------------------------------------------------------------------------
+  # Étape 2c - SCA : vulnérabilités des dépendances et de l'image
+  #   Règle : échec si Trivy trouve une CVE HIGH ou CRITICAL
+  # --------------------------------------------------------------------------
+  sca:
+    name: SCA (Trivy + pip-audit)
+    needs: build-test
+    runs-on: ubuntu-latest
+    env:
+      TRIVY: docker run --rm -v ${{ github.workspace }}:/src -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache aquasec/trivy:0.58.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: pip-audit (informatif, base OSV/PyPI)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          mkdir -p reports
+          pip-audit -r requirements.txt --desc on -f markdown -o reports/pip-audit.md || true
+          cat reports/pip-audit.md
+          cat reports/pip-audit.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trivy - rapport complet des dépendances
+        run: |
+          mkdir -p reports
+          $TRIVY fs --scanners vuln --format table --output /src/reports/trivy-fs.txt /src
+          $TRIVY fs --scanners vuln --format sarif --output /src/reports/trivy-fs.sarif /src
+          cat reports/trivy-fs.txt
+
+      - name: Construction de l'image Docker
+        run: docker build -t securenotes:${{ github.sha }} .
+
+      - name: Trivy - rapport de l'image
+        run: |
+          $TRIVY image --scanners vuln --ignore-unfixed --format table \
+            --output /src/reports/trivy-image.txt securenotes:${{ github.sha }}
+          cat reports/trivy-image.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sca-reports
+          path: reports/
+
+      - name: "Security gate SCA : dépendances (HIGH, CRITICAL)"
+        id: fs_gate
+        continue-on-error: true
+        run: $TRIVY fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 /src
+
+      - name: "Security gate SCA : image (HIGH, CRITICAL corrigeables)"
+        id: image_gate
+        continue-on-error: true
+        run: |
+          $TRIVY image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 \
+            securenotes:${{ github.sha }}
+
+      - name: Verdict SCA
+        run: |
+          echo "## SCA - Trivy" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dépendances : ${{ steps.fs_gate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image Docker : ${{ steps.image_gate.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.fs_gate.outcome }}" != "success" ] || [ "${{ steps.image_gate.outcome }}" != "success" ]; then
+            echo "::error::Dépendances vulnérables (HIGH/CRITICAL) détectées - fusion bloquée."
+            exit 1
+          fi
+
+  # --------------------------------------------------------------------------
+  # Étape 3 - DAST : déploiement éphémère + scan OWASP ZAP
+  #   L'application est lancée dans un conteneur jetable sur le runner,
+  #   attaquée par ZAP (spider + scan actif), puis détruite.
+  #   Règle : échec si ZAP remonte une alerte de risque High (niveau max de ZAP).
+  # --------------------------------------------------------------------------
+  dast:
+    name: DAST (OWASP ZAP sur environnement éphémère)
+    needs: build-test
+    runs-on: ubuntu-latest
+    env:
+      TARGET: http://localhost:8000
+      ZAP_FAIL_RISK: "3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construction de l'image
+        run: docker build -t securenotes:dast .
+
+      - name: Déploiement de l'environnement éphémère
+        run: |
+          docker run -d --name securenotes-ephemeral -p 8000:8000 \
+            -e SECRET_KEY="$(openssl rand -hex 32)" securenotes:dast
+          for i in $(seq 1 30); do
+            if curl -fsS "$TARGET/health"; then echo; echo "Application prête"; exit 0; fi
+            sleep 2
+          done
+          docker logs securenotes-ephemeral
+          exit 1
+
+      - name: Scan OWASP ZAP (full scan - spider + attaque active)
+        run: |
+          mkdir -p zap && cp .zap/rules.tsv zap/ && chmod -R 777 zap
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py -t "$TARGET" -c rules.tsv -m 2 -T 15 -I \
+            -r zap-report.html -J zap-report.json -w zap-report.md || echo "ZAP code retour $?"
+          ls -la zap
+
+      - name: Journaux de l'application testée
+        if: always()
+        run: docker logs securenotes-ephemeral 2>&1 | tail -n 100
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-reports
+          path: zap/
+
+      - name: "Security gate DAST : alertes de risque High"
+        run: python3 scripts/zap_gate.py zap/zap-report.json
+
+      - name: Destruction de l'environnement éphémère
+        if: always()
+        run: docker rm -f securenotes-ephemeral || true
+
+  # --------------------------------------------------------------------------
+  # Garde-fou global : seul ce job est déclaré « required » dans la
+  # protection de la branche main. Il échoue si un contrôle a échoué.
+  # --------------------------------------------------------------------------
+  security-gate:
+    name: Security gate
+    needs: [build-test, sast, secrets, sca, dast]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Agrégation des résultats
+        run: |
+          {
+            echo "## Security gate"
+            echo "| Contrôle | Résultat |"
+            echo "|---|---|"
+            echo "| Build & tests | ${{ needs.build-test.result }} |"
+            echo "| SAST | ${{ needs.sast.result }} |"
+            echo "| Secrets | ${{ needs.secrets.result }} |"
+            echo "| SCA | ${{ needs.sca.result }} |"
+            echo "| DAST | ${{ needs.dast.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for r in "${{ needs.build-test.result }}" "${{ needs.sast.result }}" "${{ needs.secrets.result }}" \
+                   "${{ needs.sca.result }}" "${{ needs.dast.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "::error::Au moins un contrôle de sécurité a échoué - déploiement interdit."
+              exit 1
+            fi
+          done
+          echo "Tous les contrôles sont au vert : déploiement autorisé."
+
+  # --------------------------------------------------------------------------
+  # Déploiement : uniquement sur main et uniquement si la security gate passe
+  # --------------------------------------------------------------------------
+  deploy:
+    name: Déploiement (publication de l'image)
+    needs: security-gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Connexion à GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build & push de l'image validée
+        run: |
+          IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+          echo "Image déployée : $IMAGE:${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"

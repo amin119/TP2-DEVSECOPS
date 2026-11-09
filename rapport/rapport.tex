@@ -1,0 +1,794 @@
+% =============================================================================
+%  Rapport TP2 DevSecOps - Intégration de la sécurité dans un pipeline CI/CD
+%  Compilation : pdflatex rapport.tex (2 fois, pour la table des matières)
+%                ou importer le dossier « rapport » dans Overleaf.
+%  Captures   : déposer les images PNG dans rapport/captures/ avec le nom
+%               indiqué dans chaque cadre gris. Tant qu'une image manque,
+%               un cadre de remplacement décrivant la capture est affiché.
+% =============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amssymb}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{graphicx}
+\usepackage[table]{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds,babel}
+\usepackage[hidelinks]{hyperref}
+
+% ---------------------------------------------------------------- Informations
+\newcommand{\etudiant}{A. CHABBAH}          % <-- à adapter (Prénom NOM)
+\newcommand{\formation}{DevSecOps}          % <-- à adapter (formation / promo)
+\newcommand*{\enseignant}{}                 % <-- à adapter (nom de l'enseignant)
+\newcommand{\depot}{https://github.com/Amin911Nadas/tp2-devsecops-pipeline}
+
+% ---------------------------------------------------------------- Couleurs
+\definecolor{bleu}{HTML}{1F4E79}
+\definecolor{vert}{HTML}{2E7D32}
+\definecolor{rouge}{HTML}{C62828}
+\definecolor{orange}{HTML}{EF6C00}
+\definecolor{gris}{HTML}{F3F4F6}
+\definecolor{grisfonce}{HTML}{6B7280}
+\definecolor{codebg}{HTML}{F8F8F8}
+
+% ---------------------------------------------------------------- En-têtes
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small TP2 -- Sécurité dans un pipeline CI/CD}
+\rhead{\small \etudiant}
+\cfoot{\thepage}
+\setlength{\headheight}{14pt}
+
+% ---------------------------------------------------------------- Listings
+\lstdefinelanguage{yaml}{
+  keywords={true,false,null,on},
+  sensitive=false,
+  comment=[l]{\#},
+  morestring=[b]",
+  morestring=[b]',
+}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  frame=single, rulecolor=\color{black!15},
+  keywordstyle=\color{bleu}\bfseries,
+  commentstyle=\color{grisfonce}\itshape,
+  stringstyle=\color{vert},
+  numbers=left, numberstyle=\tiny\color{grisfonce}, numbersep=6pt,
+  breaklines=true, breakatwhitespace=false, columns=fullflexible,
+  showstringspaces=false, tabsize=2, xleftmargin=1.5em, framexleftmargin=1.5em,
+  literate=
+    {é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {ë}{{\"e}}1 {à}{{\`a}}1 {â}{{\^a}}1
+    {î}{{\^i}}1 {ï}{{\"i}}1 {ô}{{\^o}}1 {ù}{{\`u}}1 {û}{{\^u}}1 {ç}{{\c c}}1
+    {É}{{\'E}}1 {È}{{\`E}}1 {À}{{\`A}}1 {Ç}{{\c C}}1
+    {«}{{\guillemotleft}}1 {»}{{\guillemotright}}1 {’}{{'}}1 {–}{{--}}1 {—}{{---}}1
+}
+
+% ---------------------------------------------------------------- Captures
+% \capture{nom-fichier}{légende}{ce qu'il faut capturer}
+\newcommand{\capture}[3]{%
+  \begin{figure}[H]
+    \centering
+    \IfFileExists{captures/#1.png}{%
+      \includegraphics[width=\linewidth,height=0.42\textheight,keepaspectratio]{captures/#1.png}%
+    }{%
+      \begin{tcolorbox}[width=\linewidth, colback=gris, colframe=grisfonce,
+                        arc=2mm, boxrule=0.6pt, halign=center, valign=center, height=5.2cm]
+        {\Large\color{grisfonce} Capture d'écran à insérer}\\[2mm]
+        \texttt{captures/#1.png}\\[3mm]
+        \begin{minipage}{0.85\linewidth}\centering\small #3\end{minipage}
+      \end{tcolorbox}%
+    }
+    \caption{#2}
+    \label{fig:#1}
+  \end{figure}
+}
+
+% ---------------------------------------------------------------- Encadrés
+\newtcolorbox{objectif}{colback=bleu!5, colframe=bleu, arc=1mm, boxrule=0.8pt,
+  left=3mm, right=3mm, fonttitle=\bfseries, title=Objectif de l'étape}
+\newtcolorbox{regle}{colback=rouge!4, colframe=rouge, arc=1mm, boxrule=0.8pt,
+  left=3mm, right=3mm, fonttitle=\bfseries, title=Règle bloquante}
+\newtcolorbox{bilan}{colback=vert!5, colframe=vert, arc=1mm, boxrule=0.8pt,
+  left=3mm, right=3mm, fonttitle=\bfseries, title=Bilan}
+
+\newcommand{\ok}{\textcolor{vert}{\textbf{Succès}}}
+\newcommand{\ko}{\textcolor{rouge}{\textbf{Échec}}}
+\newcommand{\fichier}[1]{\texttt{#1}}
+
+\begin{document}
+
+% =============================================================================
+%  PAGE DE GARDE
+% =============================================================================
+\begin{titlepage}
+  \centering
+  \vspace*{1.5cm}
+  {\large \formation\par}
+  \vspace{2.5cm}
+  {\color{bleu}\rule{\linewidth}{1.2pt}\par}
+  \vspace{0.6cm}
+  {\Huge\bfseries Intégration de la sécurité\\[3mm] dans un pipeline CI/CD\par}
+  \vspace{0.4cm}
+  {\Large Travaux pratiques n\textsuperscript{o}\,2 -- DevSecOps\par}
+  \vspace{0.6cm}
+  {\color{bleu}\rule{\linewidth}{1.2pt}\par}
+  \vspace{1.5cm}
+  {\large SAST $\cdot$ SCA $\cdot$ Secrets $\cdot$ DAST $\cdot$ Security gate\par}
+  \vspace{0.4cm}
+  {\normalsize GitHub Actions -- Semgrep -- Bandit -- Gitleaks -- Trivy -- OWASP ZAP\par}
+  \vfill
+  \begin{tabular}{rl}
+    \textbf{Réalisé par :} & \etudiant \\
+    \ifx\enseignant\empty\else \textbf{Encadré par :} & \enseignant \\ \fi
+    \textbf{Dépôt :} & \href{\depot}{\texttt{\detokenize{github.com/Amin911Nadas/tp2-devsecops-pipeline}}} \\
+    \textbf{Date :} & \today \\
+  \end{tabular}
+  \vspace{1cm}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+\listoffigures
+\newpage
+
+% =============================================================================
+\section{Introduction}
+% =============================================================================
+
+L'approche \textbf{DevSecOps} consiste à intégrer la sécurité à chaque étape du cycle de
+développement (« \emph{shift left} ») plutôt qu'à la traiter en fin de projet. Le pipeline
+d'intégration et de déploiement continus (CI/CD) devient alors un \textbf{garde-fou} : chaque
+modification du code est automatiquement compilée, testée, puis analysée par plusieurs outils de
+sécurité complémentaires. Si une vulnérabilité critique ou de haute sévérité est détectée, la
+modification ne peut pas être fusionnée et l'application n'est pas déployée.
+
+Ce TP a pour objectifs :
+\begin{itemize}[itemsep=2pt]
+  \item d'automatiser les tests de sécurité (SAST, SCA, DAST) dans un pipeline CI/CD ;
+  \item de comprendre le rôle du pipeline comme barrière de sécurité ;
+  \item de configurer des règles de validation qui bloquent les déploiements non sécurisés ;
+  \item de démontrer le fonctionnement de ces règles par une \emph{pull request} volontairement
+        vulnérable, puis par sa correction.
+\end{itemize}
+
+\subsection{Application support : SecureNotes}
+
+Pour ce TP, nous avons développé \textbf{SecureNotes}, une petite application web
+\textbf{Python/Flask} de prise de notes, avec :
+\begin{itemize}[itemsep=2pt]
+  \item une interface HTML (liste, création et consultation de notes) protégée par jeton CSRF ;
+  \item une API JSON (\fichier{GET/POST /api/notes}, \fichier{GET /api/notes/<id>}) ;
+  \item une route de supervision \fichier{/health} ;
+  \item une base SQLite accédée exclusivement par requêtes paramétrées ;
+  \item des en-têtes de sécurité HTTP (CSP, \fichier{X-Frame-Options}, \fichier{X-Content-Type-Options},
+        \fichier{Referrer-Policy}, \fichier{Permissions-Policy}, COOP/CORP/COEP\ldots) ;
+  \item une image Docker durcie (utilisateur non privilégié, mises à jour système, \emph{healthcheck}).
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Structure du dépôt}
+\begin{tabularx}{\linewidth}{>{\ttfamily}l X}
+\toprule
+\textrm{\textbf{Chemin}} & \textbf{Rôle} \\
+\midrule
+app/                       & Code de l'application Flask (routes, accès BD, sécurité, gabarits) \\
+tests/                     & Tests unitaires \texttt{pytest} \\
+Dockerfile                 & Image d'exécution (Gunicorn, utilisateur non-root) \\
+requirements*.txt          & Dépendances figées (production / développement) \\
+.github/workflows/ci.yml   & Pipeline DevSecOps GitHub Actions \\
+scripts/semgrep\_gate.py   & Porte de sécurité SAST (analyse du rapport Semgrep) \\
+scripts/zap\_gate.py       & Porte de sécurité DAST (analyse du rapport ZAP) \\
+.zap/rules.tsv             & Configuration des règles ZAP (alertes informatives ignorées) \\
+rapport/                   & Le présent rapport \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\capture{cap01-depot-github}{Dépôt GitHub du projet}{Page d'accueil du dépôt GitHub
+(\texttt{github.com/Amin911Nadas/tp2-devsecops-pipeline}) montrant l'arborescence des fichiers
+et le README.}
+
+% =============================================================================
+\section{Architecture du pipeline DevSecOps}
+% =============================================================================
+
+Le pipeline est défini dans \fichier{.github/workflows/ci.yml}. Il se déclenche sur chaque
+\emph{push} vers \fichier{main} et sur chaque \emph{pull request} ciblant \fichier{main}.
+La figure~\ref{fig:pipeline} en présente l'enchaînement.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=6mm and 9mm,
+  job/.style={draw, rounded corners=2pt, minimum width=3.3cm, minimum height=1.05cm,
+              align=center, font=\small, fill=white, thick},
+  base/.style={job, draw=bleu, fill=bleu!8},
+  secu/.style={job, draw=orange, fill=orange!8},
+  gate/.style={job, draw=rouge, fill=rouge!8, minimum width=3cm},
+  dep/.style={job, draw=vert, fill=vert!8, minimum width=3cm},
+  fl/.style={-{Stealth[length=2.5mm]}, thick, color=black!60}
+]
+  \node[base] (build) {\textbf{Build \& tests}\\flake8, pytest};
+  \node[secu, right=14mm of build, yshift=24mm] (sast) {\textbf{SAST}\\Semgrep, Bandit};
+  \node[secu, below=of sast] (secrets) {\textbf{Secrets}\\Gitleaks};
+  \node[secu, below=of secrets] (sca) {\textbf{SCA}\\Trivy, pip-audit};
+  \node[secu, below=of sca] (dast) {\textbf{DAST}\\OWASP ZAP};
+  \node[gate, right=14mm of build, xshift=40mm] (gate) {\textbf{Security}\\\textbf{gate}};
+  \node[dep, right=of gate] (deploy) {\textbf{Déploiement}\\image GHCR};
+
+  \foreach \j in {sast,secrets,sca,dast} {
+    \draw[fl] (build.east) -- ++(5mm,0) |- (\j.west);
+    \draw[fl] (\j.east) -- ++(5mm,0) |- (gate.west);
+  }
+  \draw[fl] (gate) -- node[above, font=\scriptsize]{si succès} node[below, font=\scriptsize]{\& main} (deploy);
+
+  \node[font=\scriptsize, color=grisfonce, below=1mm of dast, align=center]
+    {environnement éphémère\\(conteneur Docker sur le runner)};
+\end{tikzpicture}
+\caption{Enchaînement des jobs du pipeline DevSecOps}
+\label{fig:pipeline}
+\end{figure}
+
+Les quatre contrôles de sécurité s'exécutent \textbf{en parallèle} après la réussite du build : le
+développeur reçoit ainsi un retour complet en une seule exécution (tous les problèmes sont remontés
+en même temps, et non un par un). Un job d'agrégation, la \textbf{security gate}, échoue si l'un des
+contrôles a échoué ; c'est ce seul job qui est déclaré obligatoire dans la protection de la branche
+\fichier{main}. Le déploiement n'a lieu que sur \fichier{main}, après une gate réussie.
+
+\begin{table}[H]
+\centering
+\caption{Outils utilisés et règles bloquantes}
+\label{tab:outils}
+\small
+\begin{tabularx}{\linewidth}{l l X X}
+\toprule
+\textbf{Type} & \textbf{Outil} & \textbf{Périmètre analysé} & \textbf{Condition d'échec} \\
+\midrule
+Qualité & flake8, pytest & code Python, tests unitaires & erreur de lint ou test en échec \\
+SAST & Semgrep & code source (règles \texttt{p/python}, \texttt{p/flask}, \texttt{p/owasp-top-ten}) & résultat de sévérité \texttt{ERROR}/\texttt{HIGH}/\texttt{CRITICAL} \\
+SAST & Bandit & code source Python & problème de sévérité \texttt{HIGH} (confiance $\geq$ \texttt{MEDIUM}) \\
+Secrets & Gitleaks & fichiers du dépôt & au moins un secret détecté \\
+SCA & Trivy (fs) & dépendances (\texttt{requirements*.txt}) & CVE \texttt{HIGH} ou \texttt{CRITICAL} \\
+SCA & Trivy (image) & image Docker (OS + paquets) & CVE \texttt{HIGH}/\texttt{CRITICAL} disposant d'un correctif \\
+SCA & pip-audit & dépendances (base OSV) & informatif, non bloquant \\
+DAST & OWASP ZAP & application en cours d'exécution & alerte de risque \texttt{High} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Remarque sur les niveaux de sévérité.} OWASP ZAP n'a pas de niveau « critique » : son
+échelle est \emph{Informational}, \emph{Low}, \emph{Medium}, \emph{High}. Le niveau \emph{High}
+(le plus élevé) est donc assimilé à « critique ». Le seuil est paramétrable par la variable
+\fichier{ZAP\_FAIL\_RISK} (3 = High, 2 = Medium).
+
+% =============================================================================
+\section{Étape 1 -- Pipeline de base (build et tests unitaires)}
+% =============================================================================
+
+\begin{objectif}
+Disposer d'un pipeline CI qui installe les dépendances, vérifie la qualité du code et exécute les
+tests unitaires à chaque modification.
+\end{objectif}
+
+Le premier job, \fichier{build-test}, contient les étapes suivantes :
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{checkout} du dépôt (\fichier{actions/checkout}) ;
+  \item installation de Python 3.12 avec cache pip (\fichier{actions/setup-python}) ;
+  \item installation des dépendances figées (\fichier{requirements-dev.txt}) ;
+  \item analyse de style avec \textbf{flake8} ;
+  \item exécution des \textbf{tests unitaires} avec \textbf{pytest} et mesure de couverture
+        (\fichier{pytest-cov}), le rapport \fichier{coverage.xml} étant archivé comme artefact.
+\end{enumerate}
+
+\begin{lstlisting}[language=yaml, caption={Job \texttt{build-test} (extrait de \texttt{ci.yml})}]
+build-test:
+  name: Build & tests unitaires
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: pip
+    - name: Installation des dépendances
+      run: pip install -r requirements-dev.txt
+    - name: Lint (flake8)
+      run: flake8 app tests wsgi.py
+    - name: Tests unitaires + couverture
+      run: pytest -v --cov=app --cov-report=term-missing --cov-report=xml
+\end{lstlisting}
+
+Les tests unitaires (9 tests sur la version de base) vérifient le fonctionnement de l'application
+mais aussi certaines propriétés de sécurité : présence des en-têtes HTTP, rejet des formulaires sans
+jeton CSRF, échappement HTML du contenu des notes, validation des entrées de l'API.
+La couverture obtenue est de \textbf{98\,\%}.
+
+\paragraph{Éléments notables du fichier de configuration.}
+\begin{itemize}[itemsep=2pt]
+  \item \fichier{permissions: contents: read} au niveau global : principe du moindre privilège pour
+        le jeton \fichier{GITHUB\_TOKEN} ; seuls les jobs qui en ont besoin obtiennent des droits
+        supplémentaires (\fichier{security-events: write}, \fichier{packages: write}).
+  \item \fichier{concurrency} : une nouvelle exécution sur la même branche annule la précédente.
+  \item Versions de dépendances \textbf{figées} : les builds sont reproductibles et l'analyse SCA
+        porte exactement sur les versions déployées.
+\end{itemize}
+
+\capture{cap02-pipeline-base}{Exécution réussie du pipeline de base}{Onglet \emph{Actions} :
+exécution du commit « Étape 1 » avec le job \emph{Build \& tests unitaires} en vert.}
+
+\capture{cap03-tests-unitaires}{Journal des tests unitaires et de la couverture}{Journal du job
+\emph{Build \& tests unitaires}, étape « Tests unitaires + couverture » dépliée : liste des tests
+\texttt{PASSED} et tableau de couverture.}
+
+% =============================================================================
+\section{Étape 2 -- Intégration du SAST et du SCA}
+% =============================================================================
+
+\begin{objectif}
+Automatiser l'analyse statique du code (SAST), la recherche de secrets et l'analyse de la composition
+logicielle (SCA), et bloquer le pipeline en cas de vulnérabilité critique ou haute.
+\end{objectif}
+
+\subsection{SAST : Semgrep et Bandit}
+
+Deux outils complémentaires sont utilisés :
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Semgrep}, moteur multi-langages basé sur des règles, avec les jeux de règles
+        \fichier{p/python}, \fichier{p/flask} et \fichier{p/owasp-top-ten} (analyse de
+        flux de données « \emph{taint} » pour les injections) ;
+  \item \textbf{Bandit}, analyseur spécialisé pour Python (appels dangereux, \fichier{shell=True},
+        désérialisation, cryptographie faible\ldots).
+\end{itemize}
+
+Les rapports sont produits au format \textbf{SARIF} et publiés dans l'onglet \emph{Security
+$\rightarrow$ Code scanning} de GitHub, ce qui permet de visualiser les alertes directement sur les
+lignes de code concernées. Ils sont également archivés comme artefacts.
+
+\begin{regle}
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+  \item Semgrep : échec si au moins un résultat a la sévérité \texttt{ERROR}, \texttt{HIGH} ou
+        \texttt{CRITICAL} (script \fichier{scripts/semgrep\_gate.py}).
+  \item Bandit : échec si au moins un problème de sévérité \texttt{HIGH} avec une confiance
+        $\geq$ \texttt{MEDIUM} : \fichier{bandit -r app --severity-level high --confidence-level medium}.
+\end{itemize}
+\end{regle}
+
+Les portes sont implémentées en deux temps : les étapes de « gate » sont marquées
+\fichier{continue-on-error} afin que \emph{tous} les rapports soient produits et publiés, puis une
+étape finale « Verdict » fait échouer le job si l'une des portes a échoué.
+
+\begin{lstlisting}[language=yaml, caption={Portes de sécurité du job SAST}]
+- name: "Security gate SAST : Semgrep (ERROR/HIGH/CRITICAL)"
+  id: semgrep_gate
+  continue-on-error: true
+  run: python scripts/semgrep_gate.py reports/semgrep.json
+
+- name: "Security gate SAST : Bandit (sévérité HIGH)"
+  id: bandit_gate
+  continue-on-error: true
+  run: bandit -r app wsgi.py --severity-level high --confidence-level medium
+
+- name: Verdict SAST
+  run: |
+    if [ "${{ steps.semgrep_gate.outcome }}" != "success" ] || \
+       [ "${{ steps.bandit_gate.outcome }}" != "success" ]; then
+      echo "::error::Vulnérabilités SAST critiques/hautes détectées - fusion bloquée."
+      exit 1
+    fi
+\end{lstlisting}
+
+\subsection{Détection de secrets : Gitleaks}
+
+\textbf{Gitleaks} recherche les secrets (clés d'API, jetons, mots de passe, clés privées) présents
+dans les fichiers du dépôt. Toute détection fait échouer le job \fichier{secrets}. Dans l'application,
+la clé secrète Flask n'est jamais codée en dur : elle est lue depuis la variable d'environnement
+\fichier{SECRET\_KEY} ou générée aléatoirement au démarrage.
+
+\subsection{SCA : Trivy et pip-audit}
+
+L'analyse de composition logicielle vérifie que les composants tiers ne contiennent pas de
+vulnérabilités connues (CVE) :
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Trivy -- mode \fichier{fs}} : analyse des fichiers de dépendances Python ;
+  \item \textbf{Trivy -- mode \fichier{image}} : analyse de l'image Docker construite (paquets du
+        système Debian \emph{et} paquets Python installés) ;
+  \item \textbf{pip-audit} : second avis basé sur la base OSV/PyPI, à titre informatif (il ne
+        permet pas de filtrer par sévérité).
+\end{itemize}
+
+\begin{regle}
+Trivy échoue (\fichier{--exit-code 1}) si une CVE de sévérité \texttt{HIGH} ou \texttt{CRITICAL}
+est trouvée dans les dépendances. Pour l'image, l'option \fichier{--ignore-unfixed} limite le blocage
+aux vulnérabilités pour lesquelles un correctif existe (une vulnérabilité sans correctif ne peut pas
+être résolue par l'équipe et bloquerait indéfiniment le pipeline).
+\end{regle}
+
+\begin{lstlisting}[language=yaml, caption={Portes de sécurité du job SCA}]
+- name: "Security gate SCA : dépendances (HIGH, CRITICAL)"
+  id: fs_gate
+  continue-on-error: true
+  run: $TRIVY fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 /src
+
+- name: "Security gate SCA : image (HIGH, CRITICAL corrigeables)"
+  id: image_gate
+  continue-on-error: true
+  run: |
+    $TRIVY image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL \
+      --exit-code 1 securenotes:${{ github.sha }}
+\end{lstlisting}
+
+\capture{cap04-pipeline-sast-sca}{Pipeline avec les jobs SAST, secrets et SCA}{Graphe de
+l'exécution du commit « Étape 2 » : \emph{Build \& tests} suivi des jobs \emph{SAST},
+\emph{Secrets} et \emph{SCA}, tous en vert.}
+
+\capture{cap05-sast-resume}{Résumé SAST sur la branche principale}{Page \emph{Summary} de
+l'exécution : tableau « SAST -- Semgrep » (0 résultat bloquant) ; éventuellement le journal
+Bandit « No issues identified ».}
+
+\capture{cap06-sca-trivy}{Résultat de l'analyse Trivy sur la branche principale}{Journal du job
+\emph{SCA}, étapes « Trivy -- rapport complet des dépendances » et « rapport de l'image » :
+tableaux sans vulnérabilité HIGH/CRITICAL.}
+
+% =============================================================================
+\section{Étape 3 -- Analyse dynamique (DAST) sur environnement éphémère}
+% =============================================================================
+
+\begin{objectif}
+Déployer l'application dans un environnement éphémère, l'attaquer avec OWASP ZAP pendant son
+exécution, et faire échouer le pipeline si des failles critiques sont découvertes.
+\end{objectif}
+
+\subsection{Environnement éphémère}
+
+Le job \fichier{dast} construit l'image Docker de l'application puis la démarre sur le
+\emph{runner} GitHub Actions avec une clé secrète aléatoire générée à la volée
+(\fichier{openssl rand -hex 32}). Le pipeline attend que la route \fichier{/health} réponde avant de
+lancer le scan. Cet environnement est \textbf{éphémère} : il n'existe que pendant la durée du job, il
+est isolé de la production, et il est détruit explicitement à la fin (étape exécutée même en cas
+d'échec grâce à \fichier{if: always()}), puis avec la machine virtuelle du runner.
+
+\subsection{Scan OWASP ZAP}
+
+Nous utilisons le \textbf{full scan} de ZAP (\fichier{zap-full-scan.py}) plutôt que le
+\emph{baseline scan} : le baseline est uniquement passif (il observe les réponses), alors que le
+full scan enchaîne un \emph{spider} (exploration des liens et formulaires) puis un \textbf{scan
+actif} qui envoie de véritables charges d'attaque (injection SQL, XSS, injection de commandes,
+\emph{path traversal}\ldots). Seul le scan actif permet de détecter les failles d'injection.
+
+\begin{lstlisting}[language=yaml, caption={Déploiement éphémère et scan ZAP}]
+- name: Déploiement de l'environnement éphémère
+  run: |
+    docker run -d --name securenotes-ephemeral -p 8000:8000 \
+      -e SECRET_KEY="$(openssl rand -hex 32)" securenotes:dast
+    for i in $(seq 1 30); do
+      if curl -fsS "$TARGET/health"; then exit 0; fi
+      sleep 2
+    done
+    exit 1
+
+- name: Scan OWASP ZAP (full scan - spider + attaque active)
+  run: |
+    docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" \
+      ghcr.io/zaproxy/zaproxy:stable \
+      zap-full-scan.py -t "$TARGET" -c rules.tsv -m 2 -T 15 -I \
+      -r zap-report.html -J zap-report.json -w zap-report.md
+
+- name: "Security gate DAST : alertes de risque High"
+  run: python3 scripts/zap_gate.py zap/zap-report.json
+\end{lstlisting}
+
+Options principales : \fichier{-m 2} limite le spider à 2 minutes, \fichier{-T 15} borne la durée
+totale du scan, \fichier{-c rules.tsv} ignore trois règles purement informatives, et \fichier{-I}
+empêche ZAP d'échouer sur de simples avertissements : la décision est déléguée au script
+\fichier{zap\_gate.py}.
+
+\begin{regle}
+Le script \fichier{scripts/zap\_gate.py} lit le rapport JSON de ZAP, affiche un tableau de toutes les
+alertes dans le résumé de l'exécution, et termine en erreur si au moins une alerte a un niveau de
+risque \texttt{High} (seuil configurable par \fichier{ZAP\_FAIL\_RISK}).
+\end{regle}
+
+Les rapports HTML, JSON et Markdown de ZAP sont archivés comme artefacts du job.
+
+\capture{cap07-pipeline-complet}{Pipeline complet réussi sur la branche principale}{Graphe de
+l'exécution du commit « Étape 3 » : \emph{Build}, \emph{SAST}, \emph{Secrets}, \emph{SCA},
+\emph{DAST}, \emph{Security gate} et \emph{Déploiement}, tous en vert.}
+
+\capture{cap08-dast-resume}{Résumé DAST sur la version saine}{Page \emph{Summary} : tableau
+« DAST -- OWASP ZAP » avec 0 alerte High (seules des alertes Low/Informational éventuelles).}
+
+\capture{cap09-zap-rapport-html}{Rapport HTML d'OWASP ZAP}{Télécharger l'artefact
+\texttt{zap-reports}, ouvrir \texttt{zap-report.html} dans le navigateur et capturer le récapitulatif
+des alertes par niveau de risque.}
+
+% =============================================================================
+\section{Security gate, protection de branche et déploiement}
+% =============================================================================
+
+\subsection{Agrégation des contrôles}
+
+Le job \fichier{security-gate} dépend de tous les contrôles (\fichier{needs}) et s'exécute toujours
+(\fichier{if: always()}), même lorsqu'un contrôle a échoué. Il publie un tableau récapitulatif et
+échoue si un seul résultat est différent de \fichier{success}.
+
+\subsection{Protection de la branche \texttt{main}}
+
+Pour que le pipeline soit réellement un garde-fou, la branche \fichier{main} est protégée :
+\begin{itemize}[itemsep=2pt]
+  \item fusion uniquement via \emph{pull request} ;
+  \item \textbf{status check obligatoire} : \fichier{Security gate} ;
+  \item la branche doit être à jour avant fusion.
+\end{itemize}
+Le bouton « \emph{Merge} » d'une pull request reste donc grisé tant que la security gate est en
+échec.
+
+\capture{cap10-protection-branche}{Règle de protection de la branche main}{\emph{Settings
+$\rightarrow$ Branches} (ou \emph{Rules $\rightarrow$ Rulesets}) : règle sur \texttt{main} avec
+« Require status checks to pass » et le check \emph{Security gate} sélectionné.}
+
+\subsection{Déploiement conditionnel}
+
+Le job \fichier{deploy} ne s'exécute que sur un \emph{push} vers \fichier{main} et uniquement si la
+security gate a réussi. Il construit l'image validée et la publie dans le registre GitHub Container
+Registry (\fichier{ghcr.io}), étiquetée avec le SHA du commit. Une version non sûre ne peut donc
+jamais être publiée.
+
+% =============================================================================
+\section{Étape 4 -- Validation : pull request vulnérable puis corrigée}
+% =============================================================================
+
+\begin{objectif}
+Démontrer que le pipeline bloque une modification vulnérable, puis qu'il accepte la version
+corrigée.
+\end{objectif}
+
+\subsection{Pull request n\textsuperscript{o}\,1 : fonctionnalité vulnérable}
+
+La branche \fichier{feature/recherche-vulnerable} ajoute une fonctionnalité de recherche de notes,
+une route de diagnostic réseau et un import de notes au format YAML. Plusieurs vulnérabilités y ont
+été introduites \textbf{volontairement} :
+
+\begin{lstlisting}[language=Python, caption={Extraits de code vulnérable (branche \texttt{feature/recherche-vulnerable})}]
+@bp.get("/search")
+def search():
+    q = request.args.get("q", "")
+    # VULNERABLE (CWE-89) : requête SQL construite par concaténation
+    rows = conn.execute(
+        f"SELECT id, title, content FROM notes WHERE title LIKE '%{q}%' ..."
+    ).fetchall()
+    # VULNERABLE (CWE-79) : saisie réinjectée sans échappement
+    return render_template("search.html", query=Markup(q), results=Markup(items))
+
+@bp.get("/admin/ping")              # VULNERABLE (CWE-306) : aucune authentification
+def admin_ping():
+    host = request.args.get("host", "127.0.0.1")
+    # VULNERABLE (CWE-78) : injection de commande système
+    result = subprocess.run(f"ping -c 1 {host}", shell=True, ...)
+
+@bp.post("/api/notes/import")
+def api_import_notes():
+    # VULNERABLE (CWE-502) : désérialisation YAML non sûre
+    data = yaml.load(request.get_data(as_text=True), Loader=yaml.Loader)
+\end{lstlisting}
+
+De plus, la version de \textbf{Gunicorn} est rétrogradée à \fichier{21.2.0}, affectée par les
+vulnérabilités \textbf{CVE-2024-1135} et \textbf{CVE-2024-6827} (\emph{HTTP request smuggling},
+sévérité \texttt{HIGH}).
+
+\paragraph{Point important.} Les tests unitaires de cette branche \textbf{passent} (la recherche et
+l'import fonctionnent) : sans les contrôles de sécurité, cette modification aurait été fusionnée et
+déployée.
+
+\begin{table}[H]
+\centering
+\caption{Vulnérabilités introduites et contrôles censés les détecter}
+\label{tab:matrice}
+\small
+\begin{tabularx}{\linewidth}{X l c c c}
+\toprule
+\textbf{Vulnérabilité} & \textbf{CWE} & \textbf{SAST} & \textbf{SCA} & \textbf{DAST} \\
+\midrule
+Injection SQL dans \texttt{/search}                & CWE-89  & \checkmark & & \checkmark \\
+XSS réfléchi dans \texttt{/search}                 & CWE-79  & \checkmark & & \checkmark \\
+Route admin sans authentification + injection de commande (\texttt{/admin/ping}) & CWE-306 / CWE-78 & \checkmark & & \checkmark \\
+Désérialisation YAML non sûre                       & CWE-502 & \checkmark & & \\
+Divulgation d'erreurs SQL                           & CWE-209 & & & \checkmark \\
+Gunicorn 21.2.0 (CVE-2024-1135, CVE-2024-6827)      & CWE-444 & & \checkmark & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Ce tableau illustre la \textbf{complémentarité} des approches : le SAST voit le code mais pas
+l'environnement d'exécution, le SCA voit les composants tiers mais pas le code métier, et le DAST
+confirme l'exploitabilité réelle depuis l'extérieur, sans connaître le code.
+
+\capture{cap11-pr-vulnerable-checks}{Pull request vulnérable : checks en échec et fusion bloquée}{Page
+de la PR n\textsuperscript{o}\,1, en bas : liste des checks avec SAST, SCA, DAST et \emph{Security gate}
+en rouge, et le message « Merging is blocked » / bouton de fusion désactivé.}
+
+\capture{cap12-pr-vulnerable-graphe}{Graphe d'exécution de la pull request vulnérable}{Onglet
+\emph{Checks} ou \emph{Actions} de la PR n\textsuperscript{o}\,1 : graphe du workflow montrant le build
+vert et les jobs de sécurité en échec.}
+
+\capture{cap13-sast-echec}{Détections SAST sur la pull request vulnérable}{Journal du job
+\emph{SAST} : résultat de Bandit (B602 \texttt{subprocess\_popen\_with\_shell\_equals\_true},
+sévérité High) et tableau Semgrep des règles déclenchées dans le résumé.}
+
+\capture{cap14-sca-echec}{Détection SCA : Gunicorn vulnérable}{Journal du job \emph{SCA}, étape
+« Security gate SCA : dépendances » : tableau Trivy listant \texttt{gunicorn 21.2.0} avec
+CVE-2024-1135 / CVE-2024-6827 (HIGH).}
+
+\capture{cap15-dast-echec}{Détections DAST : alertes High remontées par ZAP}{Résumé de l'exécution,
+section « DAST -- OWASP ZAP » : alertes High (injection SQL, XSS réfléchi, injection de commande\ldots)
+et message « pipeline bloqué ».}
+
+\capture{cap16-code-scanning}{Alertes dans GitHub Code Scanning}{Onglet \emph{Security
+$\rightarrow$ Code scanning} (ou annotations dans l'onglet \emph{Files changed} de la PR) : alertes
+Semgrep/Bandit positionnées sur les lignes vulnérables.}
+
+\capture{cap17-security-gate-echec}{Security gate en échec}{Résumé de l'exécution, tableau
+« Security gate » : Build \texttt{success}, SAST/SCA/DAST \texttt{failure}.}
+
+\subsection{Pull request n\textsuperscript{o}\,2 : version corrigée}
+
+La branche \fichier{fix/recherche-securisee} propose la même fonctionnalité, écrite de manière sûre :
+
+\begin{table}[H]
+\centering
+\caption{Corrections apportées}
+\small
+\begin{tabularx}{\linewidth}{l X}
+\toprule
+\textbf{Vulnérabilité} & \textbf{Correction} \\
+\midrule
+Injection SQL     & requête paramétrée (\texttt{LIKE ?}) dans \texttt{db.search\_notes()} \\
+XSS réfléchi      & suppression de \texttt{Markup()} : échappement automatique de Jinja2 \\
+Route \texttt{/admin/ping} & route supprimée (fonctionnalité non nécessaire, aucune commande système) \\
+YAML non sûr      & \texttt{yaml.safe\_load()} + validation du schéma (liste de 1 à 50 notes, champs contrôlés) \\
+Erreurs SQL       & plus d'exception SQL possible ; aucune trace technique renvoyée au client \\
+Gunicorn          & retour à la version maintenue \texttt{26.2.0} \\
+Saisie            & longueur de la recherche limitée à 100 caractères \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{lstlisting}[language=Python, caption={Code corrigé (branche \texttt{fix/recherche-securisee})}]
+def search_notes(term):                       # app/db.py
+    pattern = f"%{term}%"
+    return get_db().execute(
+        "SELECT id, title, content FROM notes WHERE title LIKE ? OR content LIKE ?",
+        (pattern, pattern),
+    ).fetchall()
+
+@bp.get("/search")                            # app/routes.py
+def search():
+    q = request.args.get("q", "").strip()[:MAX_QUERY]
+    results = db.search_notes(q) if q else []
+    return render_template("search.html", query=q, results=results)
+
+@bp.post("/api/notes/import")
+def api_import_notes():
+    try:
+        data = yaml.safe_load(request.get_data(as_text=True))
+    except yaml.YAMLError:
+        return jsonify(error="YAML invalide"), 400
+    ...  # validation de chaque note avec _validate()
+\end{lstlisting}
+
+Des \textbf{tests de non-régression de sécurité} ont été ajoutés : la charge
+\texttt{x' OR '1'='1' --} ne renvoie aucune note, la charge \texttt{<script>} est échappée, la route
+\texttt{/admin/ping} renvoie 404, et un document YAML contenant
+\texttt{!!python/object/apply:os.system} est rejeté (15 tests, 96\,\% de couverture).
+
+\capture{cap18-pr-corrigee-checks}{Pull request corrigée : tous les checks passent}{Page de la PR
+n\textsuperscript{o}\,2 : tous les checks en vert et le message « All checks have passed », bouton
+« Merge pull request » actif.}
+
+\capture{cap19-pr-corrigee-dast}{Résumé de sécurité de la pull request corrigée}{Résumé de
+l'exécution de la PR n\textsuperscript{o}\,2 : tableaux SAST (0 bloquant), DAST (0 High) et
+Security gate entièrement à \texttt{success}.}
+
+\capture{cap20-deploiement}{Fusion et déploiement de la version corrigée}{Après fusion de la PR
+n\textsuperscript{o}\,2 : exécution sur \texttt{main} avec le job \emph{Déploiement} en vert, et/ou
+la page \emph{Packages} du dépôt montrant l'image publiée sur \texttt{ghcr.io}.}
+
+% =============================================================================
+\section{Synthèse des résultats}
+% =============================================================================
+
+\begin{table}[H]
+\centering
+\caption{Résultats des exécutions du pipeline}
+\label{tab:resultats}
+\small
+\begin{tabular}{l c c c c c c c}
+\toprule
+\textbf{Exécution} & \textbf{Build} & \textbf{SAST} & \textbf{Secrets} & \textbf{SCA} & \textbf{DAST} & \textbf{Gate} & \textbf{Déploiement} \\
+\midrule
+\texttt{main} -- étape 3          & \ok & \ok & \ok & \ok & \ok & \ok & \ok \\
+PR n\textsuperscript{o}\,1 (vulnérable) & \ok & \ko & \ok & \ko & \ko & \ko & -- \\
+PR n\textsuperscript{o}\,2 (corrigée)   & \ok & \ok & \ok & \ok & \ok & \ok & -- \\
+\texttt{main} après fusion        & \ok & \ok & \ok & \ok & \ok & \ok & \ok \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{bilan}
+Le pipeline remplit son rôle de garde-fou : la pull request vulnérable, dont les tests unitaires
+passent pourtant, est bloquée par trois contrôles indépendants (SAST, SCA et DAST) et ne peut pas
+être fusionnée. La version corrigée franchit tous les contrôles, est fusionnée, puis déployée
+automatiquement.
+\end{bilan}
+
+% =============================================================================
+\section{Analyse critique et pistes d'amélioration}
+% =============================================================================
+
+\subsection{Limites constatées}
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Faux positifs / faux négatifs} : les outils SAST reposent sur des règles ; certaines
+        détections peuvent être non pertinentes (ex. Bandit B108 sur un chemin temporaire) et
+        nécessitent un tri. Inversement, une faille logique (contrôle d'accès métier) peut échapper
+        aux trois outils.
+  \item \textbf{Durée du DAST} : le scan actif est le job le plus long ; il est borné
+        (\texttt{-m 2 -T 15}) pour rester compatible avec un cycle de PR. Un scan plus profond
+        (authentifié, avec définition OpenAPI) pourrait être planifié la nuit.
+  \item \textbf{Vulnérabilités sans correctif} dans l'image de base : elles sont volontairement
+        ignorées par la gate (\texttt{--ignore-unfixed}) mais restent visibles dans les rapports.
+  \item \textbf{Seuils} : bloquer uniquement sur \emph{High/Critical} est un compromis entre sécurité
+        et vélocité ; les alertes \emph{Medium} doivent être suivies dans un backlog.
+\end{itemize}
+
+\subsection{Améliorations possibles}
+\begin{itemize}[itemsep=2pt]
+  \item Génération d'un \textbf{SBOM} (CycloneDX/SPDX) et \textbf{signature de l'image} (Cosign)
+        pour garantir l'intégrité de la chaîne d'approvisionnement ;
+  \item analyse de l'\textbf{infrastructure as code} (Dockerfile, workflows) avec Trivy
+        \texttt{config}, Checkov ou Hadolint ;
+  \item épinglage des actions GitHub par \textbf{SHA} de commit et Dependabot pour leurs mises à jour ;
+  \item centralisation des résultats dans \textbf{DefectDojo} ou SonarQube pour le suivi dans le temps ;
+  \item scan DAST \textbf{authentifié} et piloté par la spécification OpenAPI de l'API ;
+  \item fichier d'exceptions versionné (avec justification et date d'expiration) pour gérer les
+        faux positifs sans désactiver les contrôles.
+\end{itemize}
+
+% =============================================================================
+\section{Conclusion}
+% =============================================================================
+
+Ce TP a permis de construire un pipeline CI/CD complet dans lequel la sécurité est un critère
+d'acceptation au même titre que les tests fonctionnels. L'association du SAST (Semgrep, Bandit), de
+la détection de secrets (Gitleaks), du SCA (Trivy) et du DAST (OWASP ZAP sur un environnement
+éphémère) offre une défense en profondeur : chaque outil couvre des angles morts des autres. Les
+règles bloquantes, la security gate et la protection de la branche \texttt{main} transforment ces
+analyses en un véritable garde-fou : une vulnérabilité critique ne peut plus atteindre la
+production sans être explicitement corrigée.
+
+% =============================================================================
+\appendix
+\section{Annexe -- Fichier complet du pipeline}
+% =============================================================================
+\lstinputlisting[language=yaml, caption={\texttt{.github/workflows/ci.yml}}]{annexes/ci.yml}
+
+\section{Annexe -- Scripts de security gate}
+\lstinputlisting[language=Python, caption={\texttt{scripts/zap\_gate.py}}]{annexes/zap_gate.py}
+\lstinputlisting[language=Python, caption={\texttt{scripts/semgrep\_gate.py}}]{annexes/semgrep_gate.py}
+
+\end{document}
