@@ -2,7 +2,7 @@
 import os
 import secrets
 
-from flask import Flask
+from flask import Flask, render_template
 
 from . import db
 from .routes import bp
@@ -26,6 +26,14 @@ def create_app(test_config=None):
     db.init_app(app)
     register_security(app)
     app.register_blueprint(bp)
+
+    @app.errorhandler(400)
+    @app.errorhandler(404)
+    @app.errorhandler(405)
+    def error_page(err):
+        # Page d'erreur générique : aucun détail technique n'est renvoyé au client
+        messages = {400: "Requête invalide", 404: "Page introuvable", 405: "Méthode non autorisée"}
+        return render_template("erreur.html", code=err.code, message=messages[err.code]), err.code
 
     with app.app_context():
         db.init_db()
