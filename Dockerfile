@@ -13,12 +13,10 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt .
-# setuptools fourni par l'image de base est vulnérable (CVE-2025-47273, détectée par Trivy)
-# et inutile à l'exécution : il est supprimé de l'image.
-RUN pip install --upgrade pip \
-    && pip install -r requirements.txt \
-    && (pip uninstall -y setuptools wheel || true)
-RUN find / -xdev \( -iname "setuptools*" \) -not -path "/proc/*" 2>/dev/null || true
+# pip embarque une copie de setuptools 70.3.0 (pkg_resources) vulnérable à CVE-2025-47273,
+# détectée par Trivy. pip est inutile à l'exécution : il est retiré de l'image finale.
+RUN pip install -r requirements.txt \
+    && python -m pip uninstall -y pip
 
 COPY app ./app
 COPY wsgi.py .
