@@ -13,7 +13,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --upgrade pip \
+# setuptools de l'image de base vulnérable (CVE-2025-47273, détectée par Trivy) -> mise à jour
+RUN pip install --upgrade pip "setuptools>=84.1.0" \
     && pip install -r requirements.txt
 
 COPY app ./app
