@@ -13,9 +13,12 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt .
-# setuptools de l'image de base vulnérable (CVE-2025-47273, détectée par Trivy) -> mise à jour
-RUN pip install --upgrade pip "setuptools>=84.1.0" \
-    && pip install -r requirements.txt
+# setuptools fourni par l'image de base est vulnérable (CVE-2025-47273, détectée par Trivy)
+# et inutile à l'exécution : il est supprimé de l'image.
+RUN pip install --upgrade pip \
+    && pip install -r requirements.txt \
+    && (pip uninstall -y setuptools wheel || true)
+RUN find / -xdev \( -iname "setuptools*" \) -not -path "/proc/*" 2>/dev/null || true
 
 COPY app ./app
 COPY wsgi.py .
