@@ -67,3 +67,45 @@ def api_create_note():
         return jsonify(error=error), 400
     note_id = db.create_note(*data)
     return jsonify(dict(db.get_note(note_id))), 201
+
+
+# ---------------------------------------------------------------------------
+# Nouvelle fonctionnalité : recherche, diagnostic réseau et import YAML
+# ---------------------------------------------------------------------------
+import subprocess  # noqa: E402
+
+import yaml  # noqa: E402
+from markupsafe import Markup  # noqa: E402
+
+
+@bp.get("/search")
+def search():
+    q = request.args.get("q", "")
+    conn = db.get_db()
+    try:
+        # VULNÉRABLE (CWE-89) : requête SQL construite par concaténation
+        rows = conn.execute(
+            f"SELECT id, title, content FROM notes WHERE title LIKE '%{q}%' OR content LIKE '%{q}%'"
+        ).fetchall()
+    except Exception as exc:  # VULNÉRABLE (CWE-209) : erreur SQL renvoyée au client
+        return f"<h2>Erreur</h2><pre>sqlite3.OperationalError: {exc}</pre>", 500
+    items = "".join(f"<li>{r['title']}</li>" for r in rows)
+    # VULNÉRABLE (CWE-79) : saisie utilisateur réinjectée sans échappement
+    return render_template("search.html", query=Markup(q), results=Markup(items))
+
+
+@bp.get("/admin/ping")
+def admin_ping():
+    # VULNÉRABLE (CWE-306 + CWE-78) : route d'administration sans authentification
+    # et injection de commande via shell=True
+    host = request.args.get("host", "127.0.0.1")
+    result = subprocess.run(f"ping -c 1 {host}", shell=True, capture_output=True, text=True)
+    return f"<pre>{result.stdout}{result.stderr}</pre>"
+
+
+@bp.post("/api/notes/import")
+def api_import_notes():
+    # VULNÉRABLE (CWE-502) : désérialisation YAML non sûre (yaml.Loader instancie des objets Python)
+    data = yaml.load(request.get_data(as_text=True), Loader=yaml.Loader)
+    created = [db.create_note(n["title"], n["content"]) for n in data]
+    return jsonify(imported=len(created)), 201

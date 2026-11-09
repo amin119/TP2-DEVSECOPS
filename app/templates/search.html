@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Recherche - SecureNotes{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Résultats pour « {{ query }} »</h2>
+  <ul class="notes">{{ results }}</ul>
+</section>
+{% endblock %}

@@ -1,0 +1,186 @@
+/* SecureNotes - feuille de style (servie depuis 'self', compatible avec la CSP) */
+:root {
+  --bg: #f4f6fb;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --primary: #1f4e79;
+  --primary-2: #2563eb;
+  --border: #e5e7eb;
+  --ok: #15803d;
+  --danger: #b91c1c;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+a { color: var(--primary-2); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------- En-tête ---------- */
+.topbar {
+  background: linear-gradient(135deg, #0f2a44, var(--primary));
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(15, 42, 68, .25);
+}
+.topbar-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+.brand:hover { text-decoration: none; }
+.brand-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .15);
+  font-size: 1.05rem;
+}
+.nav { display: flex; gap: 6px; }
+.nav a {
+  color: #dbe7f5;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: .95rem;
+}
+.nav a:hover { background: rgba(255, 255, 255, .12); color: #fff; text-decoration: none; }
+
+.search {
+  margin-left: auto;
+  display: flex;
+  background: #fff;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
+}
+.search input {
+  border: 0;
+  padding: 8px 16px;
+  width: 230px;
+  font-size: .95rem;
+  outline: none;
+}
+.search button {
+  border: 0;
+  background: var(--primary-2);
+  color: #fff;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Contenu ---------- */
+.container { max-width: 960px; margin: 28px auto; padding: 0 20px; }
+
+.grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 22px; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .search { margin-left: 0; } }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+.card h2 { margin: 0 0 14px; font-size: 1.15rem; color: var(--primary); }
+.card .subtitle { margin: -8px 0 16px; color: var(--muted); font-size: .9rem; }
+
+/* ---------- Formulaires ---------- */
+label { display: block; font-weight: 600; font-size: .9rem; margin-bottom: 12px; }
+label input, label textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 400;
+  background: #fafbfc;
+}
+label textarea { min-height: 110px; resize: vertical; }
+label input:focus, label textarea:focus { outline: 2px solid #bfdbfe; border-color: var(--primary-2); }
+
+.btn {
+  display: inline-block;
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:hover { background: #163a5c; }
+
+.error {
+  background: #fef2f2;
+  color: var(--danger);
+  border: 1px solid #fecaca;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+/* ---------- Listes de notes ---------- */
+.notes { list-style: none; margin: 0; padding: 0; }
+.notes li {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary-2);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  background: #fbfcfe;
+  font-weight: 600;
+}
+.notes li a { color: var(--text); }
+.notes li .meta { display: block; font-weight: 400; font-size: .85rem; color: var(--muted); }
+.notes li.empty { border-left-color: var(--muted); color: var(--muted); font-weight: 400; }
+
+.badge {
+  display: inline-block;
+  font-size: .75rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #e0ecff;
+  color: var(--primary);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.note-body { white-space: pre-wrap; font-size: 1.02rem; }
+.back { display: inline-block; margin-top: 16px; }
+
+.footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: .85rem;
+  margin: 30px 0 40px;
+}
+
+/* ---------- Page d'erreur ---------- */
+.error-page { text-align: center; padding: 40px 24px; }
+.error-page .code { font-size: 3.2rem; font-weight: 800; color: var(--primary); margin: 0; }

@@ -60,3 +60,16 @@ def test_note_content_is_html_escaped(client):
     html = client.get(f"/notes/{note_id}").get_data(as_text=True)
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_search_finds_note(client):
+    resp = client.get("/search?q=Bienvenue")
+    assert resp.status_code == 200
+    assert "Bienvenue" in resp.get_data(as_text=True)
+
+
+def test_import_yaml_notes(client):
+    body = "- title: Import\n  content: depuis YAML\n"
+    resp = client.post("/api/notes/import", data=body, content_type="application/x-yaml")
+    assert resp.status_code == 201
+    assert resp.get_json() == {"imported": 1}
