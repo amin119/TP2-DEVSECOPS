@@ -25,9 +25,9 @@ jobs:
     name: Build & tests unitaires
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -41,7 +41,7 @@ jobs:
       - name: Tests unitaires + couverture
         run: pytest -v --cov=app --cov-report=term-missing --cov-report=xml
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: coverage
           path: coverage.xml
@@ -58,9 +58,9 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -84,7 +84,7 @@ jobs:
       - name: Publication dans GitHub Code Scanning
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/semgrep.sarif
           category: semgrep
@@ -92,12 +92,12 @@ jobs:
       - name: Publication Bandit dans GitHub Code Scanning
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/bandit.sarif
           category: bandit
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: sast-reports
@@ -129,7 +129,7 @@ jobs:
     needs: build-test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -150,9 +150,9 @@ jobs:
     env:
       TRIVY: docker run --rm -v ${{ github.workspace }}:/src -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache aquasec/trivy:0.58.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -181,7 +181,7 @@ jobs:
             --output /src/reports/trivy-image.txt securenotes:${{ github.sha }}
           cat reports/trivy-image.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: sca-reports
@@ -223,7 +223,7 @@ jobs:
       TARGET: http://localhost:8000
       ZAP_FAIL_RISK: "3"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Construction de l'image
         run: docker build -t securenotes:dast .
@@ -251,7 +251,7 @@ jobs:
         if: always()
         run: docker logs securenotes-ephemeral 2>&1 | tail -n 100
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: zap-reports
@@ -307,7 +307,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Connexion à GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
