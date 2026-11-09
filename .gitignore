@@ -15,3 +15,4 @@ rapport/*.lol
 rapport/*.fls
 rapport/*.fdb_latexmk
 rapport/*.synctex.gz
+.claude/settings.local.json
